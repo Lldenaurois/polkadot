@@ -300,14 +300,7 @@ pub fn worker_entrypoint(socket_path: &str) {
 }
 
 fn prepare_artifact(code: &[u8]) -> Artifact {
-	let blob = match crate::executor_intf::prevalidate(code) {
-		Err(err) => {
-			return Artifact::PrevalidationErr(format!("{:?}", err));
-		}
-		Ok(b) => b,
-	};
-
-	match crate::executor_intf::prepare(blob) {
+	match crate::executor_intf::prepare(code) {
 		Ok(compiled_artifact) => Artifact::Compiled { compiled_artifact },
 		Err(err) => Artifact::PreparationErr(format!("{:?}", err)),
 	}

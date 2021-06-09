@@ -38,20 +38,42 @@ const CONFIG: Config = Config {
 	},
 };
 
-/// Runs the prevaldation on the given code. Returns a [`RuntimeBlob`] if it succeeds.
-pub fn prevalidate(code: &[u8]) -> Result<RuntimeBlob, sc_executor_common::error::WasmError> {
-	let blob = RuntimeBlob::new(code)?;
-	// It's assumed this function will take care of any prevalidation logic
-	// that needs to be done.
-	//
-	// Do nothing for now.
-	Ok(blob)
-}
-
 /// Runs preparation on the given runtime blob. If successful, it returns a serialized compiled
 /// artifact which can then be used to pass into [`execute`].
-pub fn prepare(blob: RuntimeBlob) -> Result<Vec<u8>, sc_executor_common::error::WasmError> {
+pub fn prepare(code: &[u8]) -> Result<Vec<u8>, sc_executor_common::error::WasmError> {
+    let blob = RuntimeBlob::new(code)?;
 	sc_executor_wasmtime::prepare_runtime_artifact(blob, &CONFIG.semantics)
+}
+
+/// Executes the given PPreVF in the form of a compiled artifact and returns the result of exeuction
+/// upon success.
+///
+/// # Safety
+///
+/// The compiled artifact must be produced with [`prepare`]. Not following this guidance can lead
+/// to arbitrary code execution.
+pub unsafe fn prevalidate(
+	compiled_artifact: &[u8],
+	params: &[u8],
+	spawner: impl sp_core::traits::SpawnNamed + 'static,
+) -> Result<Vec<u8>, sc_executor_common::error::Error> {
+	let mut extensions = sp_externalities::Extensions::new();
+
+	extensions.register(sp_core::traits::TaskExecutorExt::new(spawner));
+	extensions.register(sp_core::traits::ReadRuntimeVersionExt::new(ReadRuntimeVersion));
+
+	let mut ext = ValidationExternalities(extensions);
+
+	sc_executor::with_externalities_safe(&mut ext, || {
+		let runtime = sc_executor_wasmtime::create_runtime_from_artifact(
+			compiled_artifact,
+			CONFIG,
+			HostFunctions::host_functions(),
+		)?;
+		runtime
+			.new_instance()?
+			.call(InvokeMethod::Export("prevalidate_collator"), params)
+	})?
 }
 
 /// Executes the given PVF in the form of a compiled artifact and returns the result of execution

@@ -29,10 +29,9 @@ pub fn validate_candidate(
 	code: &[u8],
 	params: &[u8],
 ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
-	use crate::executor_intf::{prevalidate, prepare, execute, TaskExecutor};
+	use crate::executor_intf::{prepare, execute, TaskExecutor};
 
-	let blob = prevalidate(code)?;
-	let artifact = prepare(blob)?;
+	let artifact = prepare(code)?;
 	let executor = TaskExecutor::new()?;
 	let result = unsafe {
 		// SAFETY: This is trivially safe since the artifact is obtained by calling `prepare`.
