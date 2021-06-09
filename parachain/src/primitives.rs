@@ -273,6 +273,18 @@ pub struct HrmpChannelId {
 /// A message from a parachain to its Relay Chain.
 pub type UpwardMessage = Vec<u8>;
 
+/// Pre-Validation parameters for evaluating the parachain pre-validaty function
+// TODO: balance downloads (https://github.com/paritytech/polkadot/issues/220)
+#[derive(PartialEq, Eq, Decode, Clone)]
+#[cfg_attr(feature = "std", derive(Debug, Encode))]
+pub struct PreValidationParams {
+	/// The statement is provided as public input to the parachain pre-validity function
+	statement: Vec<u8>,
+	/// The witness is provided as proof of knowledge or work of the private input to the
+	/// parachain pre-validity function
+	witness: Vec<u8>,
+}
+
 /// Validation parameters for evaluating the parachain validity function.
 // TODO: balance downloads (https://github.com/paritytech/polkadot/issues/220)
 #[derive(PartialEq, Eq, Decode, Clone)]
@@ -286,6 +298,14 @@ pub struct ValidationParams {
 	pub relay_parent_number: RelayChainBlockNumber,
 	/// The relay-chain block's storage root.
 	pub relay_parent_storage_root: Hash,
+}
+
+/// The result of parachain pre-validation.
+#[derive(PartialEq, Eq, Clone, Encode)]
+#[cfg_attr(feature = "std", derive(Debug, Decode))]
+pub struct PreValidationResult {
+	// Outcome of the pre-validation execution
+	pub valid: bool,
 }
 
 /// The result of parachain validation.

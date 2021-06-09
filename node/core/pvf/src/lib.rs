@@ -81,6 +81,7 @@ mod execute;
 mod executor_intf;
 mod host;
 mod prepare;
+mod prevalidate;
 mod priority;
 mod pvf;
 mod worker_common;
