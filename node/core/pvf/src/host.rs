@@ -40,7 +40,9 @@ use futures::{
 };
 
 /// An alias to not spell the type for the oneshot sender for the PVF execution result.
-pub(crate) type ResultSender = oneshot::Sender<Result<ValidationResult, ValidationError>>;
+pub(crate) type ResultSenderGeneric<T> = oneshot::Sender<Result<T, ValidationError>>;
+
+pub(crate) type ResultSender = ResultSenderGeneric<ValidationResult>;
 
 /// A handle to the async process serving the validation host requests.
 #[derive(Clone)]

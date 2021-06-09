@@ -18,7 +18,7 @@
 
 use crate::{
 	worker_common::{IdleWorker, WorkerHandle},
-	host::ResultSender,
+	host::ResultSenderGeneric,
 	LOG_TARGET, InvalidCandidate, ValidationError,
 };
 use super::worker::Outcome;
@@ -30,7 +30,10 @@ use futures::{
 	stream::{FuturesUnordered, StreamExt as _},
 };
 use async_std::path::PathBuf;
+use polkadot_parachain::primitives::ValidationResult;
 use slotmap::HopSlotMap;
+
+type ResultSender = ResultSenderGeneric<ValidationResult>;
 
 slotmap::new_key_type! { struct Worker; }
 
