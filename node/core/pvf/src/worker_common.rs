@@ -297,3 +297,28 @@ pub async fn framed_recv(r: &mut (impl AsyncRead + Unpin)) -> io::Result<Vec<u8>
 	r.read_exact(&mut buf).await?;
 	Ok(buf)
 }
+
+use async_trait::async_trait;
+use std::sync::Arc;
+
+#[async_trait]
+trait Worker {
+	pub fn worker_entrypoint(socket_path: &str);A
+
+	async fn spawn(
+		program_path: &Path,
+		spawn_timeout: Duration
+	) -> Result<(IdleWorker, WorkerHandle), SpawnErr>;
+
+	async fn send_request(stream: &mut UnixStream, path: &Path, input: Arc<Vec<u8>>);
+
+	async fn recv_request(stream: &mut UnixStream) -> io::Result<(PathBuf, Vec<u8>)>;
+
+	async fn start_work<T>(
+		worker: IdleWorker,
+		artifact_path: PathBuf,
+		input: Arc<Vec<u8>>,
+		cache_path: &Path,
+		background_priority: bool
+	) -> T;
+}

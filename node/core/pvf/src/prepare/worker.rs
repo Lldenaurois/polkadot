@@ -36,22 +36,6 @@ const NICENESS_FOREGROUND: i32 = 0;
 
 const COMPILATION_TIMEOUT: Duration = Duration::from_secs(10);
 
-/// Spawns a new worker with the given program path that acts as the worker and the spawn timeout.
-///
-/// The program should be able to handle `<program-path> prepare-worker <socket-path>` invocation.
-pub async fn spawn(
-	program_path: &Path,
-	spawn_timeout: Duration,
-) -> Result<(IdleWorker, WorkerHandle), SpawnErr> {
-	spawn_with_program_path(
-		"prepare",
-		program_path,
-		&["prepare-worker"],
-		spawn_timeout,
-	)
-	.await
-}
-
 pub enum Outcome {
 	/// The worker has finished the work assigned to it.
 	Concluded(IdleWorker),
@@ -65,120 +49,190 @@ pub enum Outcome {
 	DidntMakeIt,
 }
 
-/// Given the idle token of a worker and parameters of work, communicates with the worker and
-/// returns the outcome.
-pub async fn start_work(
-	worker: IdleWorker,
-	code: Arc<Vec<u8>>,
-	cache_path: &Path,
-	artifact_path: PathBuf,
-	background_priority: bool,
-) -> Outcome {
-	let IdleWorker { mut stream, pid } = worker;
+pub struct PrepareWorker {}
 
-	tracing::debug!(
-		target: LOG_TARGET,
-		worker_pid = %pid,
-		%background_priority,
-		"starting prepare for {}",
-		artifact_path.display(),
-	);
+impl Worker for PrepareWorker {
+	/// The entrypoint that the spawned prepare worker should start with. The socket_path specifies
+	/// the path to the socket used to communicate with the host.
+	pub fn worker_entrypoint(socket_path: &str) {
+		worker_event_loop("prepare", socket_path, |mut stream| async move {
+			loop {
+				let (code, dest) = recv_request(&mut stream).await?;
 
-	if background_priority {
-		renice(pid, NICENESS_BACKGROUND);
+				tracing::debug!(
+					target: LOG_TARGET,
+					worker_pid = %std::process::id(),
+					"worker: preparing artifact",
+				);
+				let artifact_bytes = prepare_artifact(&code).serialize();
+
+				// Write the serialized artifact into into a temp file.
+				tracing::debug!(
+					target: LOG_TARGET,
+					worker_pid = %std::process::id(),
+					"worker: writing artifact to {}",
+					dest.display(),
+				);
+				async_std::fs::write(&dest, &artifact_bytes).await?;
+
+				// Return back a byte that signals finishing the work.
+				framed_send(&mut stream, &[1u8]).await?;
+			}
+		});
+	}
+	/// Spawns a new worker with the given program path that acts as the worker and the spawn timeout.
+	///
+	/// The program should be able to handle `<program-path> prepare-worker <socket-path>` invocation.
+	pub async fn spawn(
+		program_path: &Path,
+		spawn_timeout: Duration,
+	) -> Result<(IdleWorker, WorkerHandle), SpawnErr> {
+		spawn_with_program_path(
+			"prepare",
+			program_path,
+			&["prepare-worker"],
+			spawn_timeout,
+		)
+		.await
 	}
 
-	with_tmp_file(pid, cache_path, |tmp_file| async move {
-		if let Err(err) = send_request(&mut stream, code, &tmp_file).await {
-			tracing::warn!(
-				target: LOG_TARGET,
-				worker_pid = %pid,
-				"failed to send a prepare request: {:?}",
-				err,
-			);
-			return Outcome::DidntMakeIt;
+	/// Given the idle token of a worker and parameters of work, communicates with the worker and
+	/// returns the outcome.
+	pub async fn start_work(
+		worker: IdleWorker,
+		code: Arc<Vec<u8>>,
+		cache_path: &Path,
+		artifact_path: PathBuf,
+		background_priority: bool,
+	) -> Outcome {
+		let IdleWorker { mut stream, pid } = worker;
+
+		tracing::debug!(
+			target: LOG_TARGET,
+			worker_pid = %pid,
+			%background_priority,
+			"starting prepare for {}",
+			artifact_path.display(),
+		);
+
+		if background_priority {
+			renice(pid, NICENESS_BACKGROUND);
 		}
 
-		// Wait for the result from the worker, keeping in mind that there may be a timeout, the
-		// worker may get killed, or something along these lines.
-		//
-		// In that case we should handle these gracefully by writing the artifact file by ourselves.
-		// We may potentially overwrite the artifact in rare cases where the worker didn't make
-		// it to report back the result.
+		with_tmp_file(pid, cache_path, |tmp_file| async move {
+			if let Err(err) = send_request(&mut stream, code, &tmp_file).await {
+				tracing::warn!(
+					target: LOG_TARGET,
+					worker_pid = %pid,
+					"failed to send a prepare request: {:?}",
+					err,
+				);
+				return Outcome::DidntMakeIt;
+			}
 
-		enum Selected {
-			Done,
-			IoErr,
-			Deadline,
-		}
+			// Wait for the result from the worker, keeping in mind that there may be a timeout, the
+			// worker may get killed, or something along these lines.
+			//
+			// In that case we should handle these gracefully by writing the artifact file by ourselves.
+			// We may potentially overwrite the artifact in rare cases where the worker didn't make
+			// it to report back the result.
 
-		let selected = futures::select! {
-			res = framed_recv(&mut stream).fuse() => {
-				match res {
-					Ok(x) if x == &[1u8] => {
-						tracing::debug!(
-							target: LOG_TARGET,
-							worker_pid = %pid,
-							"promoting WIP artifact {} to {}",
-							tmp_file.display(),
-							artifact_path.display(),
-						);
+			enum Selected {
+				Done,
+				IoErr,
+				Deadline,
+			}
 
-						async_std::fs::rename(&tmp_file, &artifact_path)
-							.await
-							.map(|_| Selected::Done)
-							.unwrap_or_else(|err| {
-								tracing::warn!(
-									target: LOG_TARGET,
-									worker_pid = %pid,
-									"failed to rename the artifact from {} to {}: {:?}",
-									tmp_file.display(),
-									artifact_path.display(),
-									err,
-								);
-								Selected::IoErr
-							})
+			let selected = futures::select! {
+				res = framed_recv(&mut stream).fuse() => {
+					match res {
+						Ok(x) if x == &[1u8] => {
+							tracing::debug!(
+								target: LOG_TARGET,
+								worker_pid = %pid,
+								"promoting WIP artifact {} to {}",
+								tmp_file.display(),
+								artifact_path.display(),
+							);
+
+							async_std::fs::rename(&tmp_file, &artifact_path)
+								.await
+								.map(|_| Selected::Done)
+								.unwrap_or_else(|err| {
+									tracing::warn!(
+										target: LOG_TARGET,
+										worker_pid = %pid,
+										"failed to rename the artifact from {} to {}: {:?}",
+										tmp_file.display(),
+										artifact_path.display(),
+										err,
+									);
+									Selected::IoErr
+								})
+						}
+						Ok(response_bytes) => {
+							use sp_core::hexdisplay::HexDisplay;
+							let bound_bytes =
+								&response_bytes[..response_bytes.len().min(4)];
+							tracing::warn!(
+								target: LOG_TARGET,
+								worker_pid = %pid,
+								"received unexpected response from the prepare worker: {}",
+								HexDisplay::from(&bound_bytes),
+							);
+							Selected::IoErr
+						},
+						Err(err) => {
+							tracing::warn!(
+								target: LOG_TARGET,
+								worker_pid = %pid,
+								"failed to recv a prepare response: {:?}",
+								err,
+							);
+							Selected::IoErr
+						}
 					}
-					Ok(response_bytes) => {
-						use sp_core::hexdisplay::HexDisplay;
-						let bound_bytes =
-							&response_bytes[..response_bytes.len().min(4)];
-						tracing::warn!(
-							target: LOG_TARGET,
-							worker_pid = %pid,
-							"received unexpected response from the prepare worker: {}",
-							HexDisplay::from(&bound_bytes),
-						);
-						Selected::IoErr
-					},
-					Err(err) => {
-						tracing::warn!(
-							target: LOG_TARGET,
-							worker_pid = %pid,
-							"failed to recv a prepare response: {:?}",
-							err,
-						);
-						Selected::IoErr
-					}
+				},
+				_ = Delay::new(COMPILATION_TIMEOUT).fuse() => Selected::Deadline,
+			};
+
+			match selected {
+				Selected::Done => {
+					renice(pid, NICENESS_FOREGROUND);
+					Outcome::Concluded(IdleWorker { stream, pid })
 				}
-			},
-			_ = Delay::new(COMPILATION_TIMEOUT).fuse() => Selected::Deadline,
-		};
+				Selected::IoErr | Selected::Deadline => {
+					let bytes = Artifact::DidntMakeIt.serialize();
+					// best effort: there is nothing we can do here if the write fails.
+					let _ = async_std::fs::write(&artifact_path, &bytes).await;
+					Outcome::DidntMakeIt
+				}
+			}
+		})
+		.await
+	}
 
-		match selected {
-			Selected::Done => {
-				renice(pid, NICENESS_FOREGROUND);
-				Outcome::Concluded(IdleWorker { stream, pid })
-			}
-			Selected::IoErr | Selected::Deadline => {
-				let bytes = Artifact::DidntMakeIt.serialize();
-				// best effort: there is nothing we can do here if the write fails.
-				let _ = async_std::fs::write(&artifact_path, &bytes).await;
-				Outcome::DidntMakeIt
-			}
-		}
-	})
-	.await
+	async fn send_request(
+		stream: &mut UnixStream,
+		code: Arc<Vec<u8>>,
+		tmp_file: &Path,
+	) -> io::Result<()> {
+		framed_send(stream, &*code).await?;
+		framed_send(stream, path_to_bytes(tmp_file)).await?;
+		Ok(())
+	}
+
+	async fn recv_request(stream: &mut UnixStream) -> io::Result<(PathBuf, Vec<u8>)> {
+		let code = framed_recv(stream).await?;
+		let tmp_file = framed_recv(stream).await?;
+		let tmp_file = bytes_to_path(&tmp_file).ok_or_else(|| {
+			io::Error::new(
+				io::ErrorKind::Other,
+				"prepare pvf recv_request: non utf-8 artifact path".to_string(),
+			)
+		})?;
+		Ok((tmp_file, code))
+	}
 }
 
 /// Create a temporary file for an artifact at the given cache path and execute the given
@@ -226,28 +280,6 @@ where
 	outcome
 }
 
-async fn send_request(
-	stream: &mut UnixStream,
-	code: Arc<Vec<u8>>,
-	tmp_file: &Path,
-) -> io::Result<()> {
-	framed_send(stream, &*code).await?;
-	framed_send(stream, path_to_bytes(tmp_file)).await?;
-	Ok(())
-}
-
-async fn recv_request(stream: &mut UnixStream) -> io::Result<(Vec<u8>, PathBuf)> {
-	let code = framed_recv(stream).await?;
-	let tmp_file = framed_recv(stream).await?;
-	let tmp_file = bytes_to_path(&tmp_file).ok_or_else(|| {
-		io::Error::new(
-			io::ErrorKind::Other,
-			"prepare pvf recv_request: non utf-8 artifact path".to_string(),
-		)
-	})?;
-	Ok((code, tmp_file))
-}
-
 pub fn bump_priority(handle: &WorkerHandle) {
 	let pid = handle.id();
 	renice(pid, NICENESS_FOREGROUND);
@@ -268,35 +300,6 @@ fn renice(pid: u32, niceness: i32) {
 			tracing::warn!(target: LOG_TARGET, "failed to set the priority: {:?}", err,);
 		}
 	}
-}
-
-/// The entrypoint that the spawned prepare worker should start with. The socket_path specifies
-/// the path to the socket used to communicate with the host.
-pub fn worker_entrypoint(socket_path: &str) {
-	worker_event_loop("prepare", socket_path, |mut stream| async move {
-		loop {
-			let (code, dest) = recv_request(&mut stream).await?;
-
-			tracing::debug!(
-				target: LOG_TARGET,
-				worker_pid = %std::process::id(),
-				"worker: preparing artifact",
-			);
-			let artifact_bytes = prepare_artifact(&code).serialize();
-
-			// Write the serialized artifact into into a temp file.
-			tracing::debug!(
-				target: LOG_TARGET,
-				worker_pid = %std::process::id(),
-				"worker: writing artifact to {}",
-				dest.display(),
-			);
-			async_std::fs::write(&dest, &artifact_bytes).await?;
-
-			// Return back a byte that signals finishing the work.
-			framed_send(&mut stream, &[1u8]).await?;
-		}
-	});
 }
 
 fn prepare_artifact(code: &[u8]) -> Artifact {
