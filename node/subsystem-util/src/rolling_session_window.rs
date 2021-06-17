@@ -176,7 +176,6 @@ impl RollingSessionWindow {
 				}),
 			}
 		};
-
 		match self.earliest_session {
 			None => {
 				// First block processed on start-up.
@@ -208,6 +207,7 @@ impl RollingSessionWindow {
 				}
 			}
 			Some(old_window_start) => {
+				println!("OR WE ARE HERE");
 				let latest = self.latest_session().expect("latest always exists if earliest does; qed");
 
 				// Either cached or ancient.
