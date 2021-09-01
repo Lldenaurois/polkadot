@@ -586,10 +586,15 @@ async fn handle_incoming(
 			block_descriptions,
 			tx,
 		} => {
-			let undisputed_chain =
-				determine_undisputed_chain(overlay_db, base_number, block_descriptions)?;
+            println!("BASE NUMBER {:?}", base_number);
+            println!("block_descriptions {:?}", block_descriptions);
 
-			let _ = tx.send(undisputed_chain);
+			let undisputed_chain =
+				determine_undisputed_chain(overlay_db, base_number, block_descriptions);
+
+            println!("UNDISPUTED CHAIN {:?}", undisputed_chain);
+
+			let _ = tx.send(undisputed_chain?);
 		},
 	}
 

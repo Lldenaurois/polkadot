@@ -417,6 +417,7 @@ where
 
 		let (lag, subchain_head) = if cfg!(feature = "disputes") {
 			// Prevent sending flawed data to the dispute-coordinator.
+            println!("\n\n SUBCHAIN Block descriptions {:?}, subchain_number + 1 - target_number {:?} \n\n", subchain_block_descriptions.len(), (subchain_number+1).checked_sub(target_number));
 			if Some(subchain_block_descriptions.len() as u32) !=
 				(subchain_number + 1).checked_sub(target_number)
 			{
@@ -452,6 +453,7 @@ where
 			self.metrics.note_disputes_finality_lag(lag_disputes);
 			(lag_disputes, subchain_head)
 		} else {
+            println!("MISMATCH!");
 			(lag, subchain_head)
 		};
 

@@ -237,9 +237,11 @@ async fn handle_incoming(
 			block_descriptions,
 			tx,
 		} => {
+            println!("\n\n BLOCK NUMBER {:?}, block descriptions {:?} \n\n", base_number, block_descriptions);
 			let undisputed_chain = block_descriptions
 				.last()
 				.map(|e| (base_number + block_descriptions.len() as BlockNumber, e.block_hash));
+            println!("\n\n UNDISPUTED CHAIN \n\n");
 
 			let _ = tx.send(undisputed_chain);
 		},

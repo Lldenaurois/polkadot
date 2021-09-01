@@ -157,15 +157,12 @@ impl TestChainStorage {
 		minimum_block_number: BlockNumber,
 		leaf: Hash,
 	) -> Option<HighestApprovedAncestorBlock> {
-		let hash = leaf;
-		let number = self.blocks_by_hash.get(&leaf)?.number;
-
 		let mut descriptions = Vec::new();
 		let mut block_hash = leaf;
 		let mut highest_approved_ancestor = None;
 
 		while let Some(block) = self.blocks_by_hash.get(&block_hash) {
-			if minimum_block_number >= block.number {
+			if minimum_block_number > block.number {
 				break
 			}
 			descriptions.push(BlockDescription {
@@ -173,59 +170,56 @@ impl TestChainStorage {
 				block_hash,
 				candidates: vec![], // not relevant for any test cases
 			});
-			if !self.approved_blocks.contains(&block_hash) {
+            println!("\n\n Minimum block number {:?} >= {:?} \t block_hash {:?} -> {} \n\n", minimum_block_number, block.number, block_hash, self.approved_blocks.contains(&block_hash));
+            if !self.approved_blocks.contains(&block_hash) {
+                descriptions.clear();
 				highest_approved_ancestor = None;
-				descriptions.clear();
 			} else if highest_approved_ancestor.is_none() {
-				descriptions.clear();
 				highest_approved_ancestor = Some(block_hash);
 			}
-			let next = block.parent_hash();
-			if &leaf != next {
-				block_hash = *next;
-			} else {
-				break
-			}
+			block_hash = *block.parent_hash();
 		}
 
-		if highest_approved_ancestor.is_none() {
-			return None
-		}
-
-		Some(HighestApprovedAncestorBlock {
-			hash,
-			number,
-			descriptions: descriptions.into_iter().rev().collect(),
-		})
+		highest_approved_ancestor
+            .map(|hash| self.blocks_by_hash.get(&hash)
+                 .map(|block|
+                     HighestApprovedAncestorBlock {
+                        hash,
+                        number: block.number,
+                        descriptions: descriptions.into_iter().rev().collect(),
+                    }
+                )
+            ).flatten()
 	}
 
-	/// Traverse backwards from leave down to block number.
+	/// Traverse backwards from leave down to target block.
 	fn undisputed_chain(
 		&self,
-		base_blocknumber: BlockNumber,
+		target_block: Hash,
 		highest_approved_block_hash: Hash,
 	) -> Option<Hash> {
-		if self.disputed_blocks.is_empty() {
-			return Some(highest_approved_block_hash)
-		}
-
-		let mut undisputed_chain = Some(highest_approved_block_hash);
-		let mut block_hash = highest_approved_block_hash;
+        println!("ONE");
+        let mut undisputed_chain = *self.blocks_by_hash.get(&highest_approved_block_hash)?.parent_hash();
+        if self.disputed_blocks.is_empty() {
+            return Some(undisputed_chain);
+        }
+        println!("TWO");
+		let mut block_hash = undisputed_chain;
 		while let Some(block) = self.blocks_by_hash.get(&block_hash) {
-			block_hash = block.hash();
+            println!("THREE");
 			if ChainBuilder::GENESIS_HASH == block_hash {
 				return None
 			}
-			let next = block.parent_hash();
+            let next = block.parent_hash();
 			if self.disputed_blocks.contains(&block_hash) {
-				undisputed_chain = Some(*next);
-			}
-			if block.number() == &base_blocknumber {
-				return None
+				undisputed_chain = *next;
+            }
+			if block_hash == target_block {
+				break
 			}
 			block_hash = *next;
 		}
-		undisputed_chain
+        Some(undisputed_chain)
 	}
 }
 
@@ -386,7 +380,7 @@ async fn test_skeleton(
 		return
 	}
 
-	tracing::trace!("approved ancestor response: {:?}", undisputed_chain);
+	println!("approved ancestor response: {:?}", undisputed_chain);
 	assert_matches!(
 		overseer_recv(
 			virtual_overseer
@@ -397,7 +391,7 @@ async fn test_skeleton(
 		}
 	);
 
-	tracing::trace!("determine undisputed chain response: {:?}", undisputed_chain);
+	println!("determine undisputed chain response: {:?}", undisputed_chain);
 	assert_matches!(
 		overseer_recv(
 			virtual_overseer
@@ -435,35 +429,36 @@ fn run_specialized_test_w_harness<F: FnOnce() -> CaseVars>(case_var_provider: F)
 		// Verify test integrity: the provided highest approved
 		// ancestor must match the chain derived one.
 		let highest_approved_ancestor_w_desc =
-			best_chain_containing_block.and_then(|best_chain_containing_block| {
-				let min_blocknumber = chain
-					.blocks_by_hash
-					.get(&best_chain_containing_block)
-					.map(|x| x.number)
-					.unwrap_or_default();
-				let highest_approved_ancestor_w_desc =
-					chain.highest_approved_ancestors(min_blocknumber, best_chain_containing_block);
-				if let (
-					Some(highest_approved_ancestor_w_desc),
-					Some(highest_approved_ancestor_block),
-				) = (&highest_approved_ancestor_w_desc, highest_approved_ancestor_block)
-				{
-					assert_eq!(
-					highest_approved_ancestor_block, highest_approved_ancestor_w_desc.hash,
-					"TestCaseIntegrity: Provided and expected approved ancestor hash mismatch: {:?} vs {:?}",
-					highest_approved_ancestor_block, highest_approved_ancestor_w_desc.hash,
-				);
-				}
-				highest_approved_ancestor_w_desc
-			});
-		if let Some(haacwd) = &highest_approved_ancestor_w_desc {
-			let expected = chain.undisputed_chain(haacwd.number, haacwd.hash);
-			assert_eq!(
-				expected, undisputed_chain,
-				"TestCaseIntegrity: Provided and anticipated undisputed chain mismatch: {:?} vs {:?}",
-				undisputed_chain, expected,
-			)
-		}
+            best_chain_containing_block.and_then(|best_chain_containing_block| {
+                println!("IS THIS PRINTING");
+                let min_blocknumber = chain
+                    .blocks_by_hash
+                    .get(&target_block)
+                    .map(|x| x.number)
+                    .unwrap_or_default();
+                let highest_approved_ancestor_w_desc =
+                    chain.highest_approved_ancestors(min_blocknumber, best_chain_containing_block);
+                if let (
+                    Some(highest_approved_ancestor_w_desc),
+                    Some(highest_approved_ancestor_block),
+                ) = (&highest_approved_ancestor_w_desc, highest_approved_ancestor_block)
+                {
+                    assert_eq!(
+                        highest_approved_ancestor_block, highest_approved_ancestor_w_desc.hash,
+                        "TestCaseIntegrity: Provided and expected approved ancestor hash mismatch: {:?} vs {:?}",
+                        highest_approved_ancestor_block, highest_approved_ancestor_w_desc.hash,
+                    );
+                    let expected = chain.undisputed_chain(target_block, highest_approved_ancestor_block);
+                    assert_eq!(
+                        expected, undisputed_chain,
+                        "TestCaseIntegrity: Provided and anticipated undisputed chain mismatch: {:?} vs {:?}",
+                        undisputed_chain, expected,
+                    )
+                }
+                highest_approved_ancestor_w_desc
+            });
+
+        println!("IS THIS PRINTING?!?!?!?!");
 
 		test_skeleton(
 			&chain,
@@ -533,7 +528,7 @@ fn chain_0() -> CaseVars {
 
 	CaseVars {
 		chain: builder.init(),
-		target_block: a1,
+		target_block: a3,
 		best_chain_containing_block: Some(a5),
 		highest_approved_ancestor_block: Some(a3),
 		undisputed_chain: Some(a2),
@@ -555,7 +550,7 @@ fn chain_1() -> CaseVars {
 	let a3 = builder.fast_forward_approved(0xA0, a2, 3);
 
 	let b2 = builder.fast_forward_approved(0xB0, a1, 2);
-	let b3 = builder.fast_forward_approved(0xB0, b2, 3);
+	let b3 = builder.fast_forward(0xB0, b2, 3);
 
 	builder.set_heads(vec![a3, b3]);
 
@@ -704,7 +699,7 @@ fn chain_6() -> CaseVars {
 	let chain = builder.init();
 
 	tracing::trace!(highest_approved = ?chain.highest_approved_ancestors(1, leaf));
-	tracing::trace!(undisputed = ?chain.undisputed_chain(1, approved));
+	tracing::trace!(undisputed = ?chain.undisputed_chain(b1, approved));
 	CaseVars {
 		chain,
 		target_block: b1,
