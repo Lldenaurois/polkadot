@@ -1632,9 +1632,22 @@ dependencies = [
 
 [[package]]
 name = "env_logger"
-version = "0.8.2"
+version = "0.8.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f26ecb66b4bdca6c1409b40fb255eefc2bd4f6d135dab3c3124f80ffa2a9661e"
+checksum = "a19187fea3ac7e84da7dacf48de0c45d63c6a76f9490dae389aead16c243fce3"
+dependencies = [
+ "atty",
+ "humantime 2.0.1",
+ "log",
+ "regex",
+ "termcolor",
+]
+
+[[package]]
+name = "env_logger"
+version = "0.9.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b2cf0344971ee6c64c31be0d530793fba457d322dfec2810c453d0ef228f9c3"
 dependencies = [
  "atty",
  "humantime 2.0.1",
@@ -5557,7 +5570,7 @@ name = "polkadot-approval-distribution"
 version = "0.1.0"
 dependencies = [
  "assert_matches",
- "env_logger 0.8.2",
+ "env_logger 0.9.0",
  "futures 0.3.14",
  "log",
  "polkadot-node-network-protocol",
@@ -5578,7 +5591,7 @@ version = "0.1.0"
 dependencies = [
  "assert_matches",
  "bitvec",
- "env_logger 0.8.2",
+ "env_logger 0.9.0",
  "futures 0.3.14",
  "log",
  "maplit",
@@ -5630,7 +5643,7 @@ name = "polkadot-availability-recovery"
 version = "0.1.0"
 dependencies = [
  "assert_matches",
- "env_logger 0.8.2",
+ "env_logger 0.9.0",
  "futures 0.3.14",
  "futures-timer 3.0.2",
  "log",
@@ -5681,7 +5694,7 @@ version = "0.1.0"
 dependencies = [
  "always-assert",
  "assert_matches",
- "env_logger 0.8.2",
+ "env_logger 0.9.0",
  "futures 0.3.14",
  "futures-timer 3.0.2",
  "log",
@@ -5823,7 +5836,7 @@ version = "0.1.0"
 dependencies = [
  "assert_matches",
  "bitvec",
- "env_logger 0.8.2",
+ "env_logger 0.9.0",
  "futures 0.3.14",
  "futures-timer 3.0.2",
  "kvdb",
@@ -6138,7 +6151,7 @@ version = "0.1.0"
 dependencies = [
  "assert_matches",
  "async-trait",
- "env_logger 0.8.2",
+ "env_logger 0.9.0",
  "futures 0.3.14",
  "futures-timer 3.0.2",
  "log",
@@ -6463,7 +6476,7 @@ version = "0.8.31"
 dependencies = [
  "beefy-gadget",
  "beefy-primitives",
- "env_logger 0.8.2",
+ "env_logger 0.9.0",
  "frame-benchmarking",
  "frame-system-rpc-runtime-api",
  "futures 0.3.14",
@@ -7306,7 +7319,7 @@ name = "remote-externalities"
 version = "0.9.0"
 source = "git+https://github.com/paritytech/substrate?branch=master#febdc30aca650c36080c513ef16cf66853a95481"
 dependencies = [
- "env_logger 0.8.2",
+ "env_logger 0.8.4",
  "hex-literal",
  "jsonrpsee-http-client",
  "jsonrpsee-proc-macros",
