@@ -5757,7 +5757,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-keyring",
- "strum",
+ "strum 0.23.0",
  "tracing",
 ]
 
@@ -6054,7 +6054,7 @@ dependencies = [
  "polkadot-node-primitives",
  "polkadot-primitives",
  "sc-network",
- "strum",
+ "strum 0.23.0",
  "thiserror",
 ]
 
@@ -9278,7 +9278,7 @@ dependencies = [
  "lazy_static",
  "sp-core",
  "sp-runtime",
- "strum",
+ "strum 0.20.0",
 ]
 
 [[package]]
@@ -9702,7 +9702,16 @@ version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7318c509b5ba57f18533982607f24070a55d353e90d4cae30c467cdb2ad5ac5c"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.20.1",
+]
+
+[[package]]
+name = "strum"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cae14b91c7d11c9a851d3fbc80a963198998c2a64eec840477fa92d8ce9b70bb"
+dependencies = [
+ "strum_macros 0.23.0",
 ]
 
 [[package]]
@@ -9714,6 +9723,19 @@ dependencies = [
  "heck",
  "proc-macro2",
  "quote",
+ "syn",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.23.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "00ad150e9d51e33e8142984f577662c1324d49f3be45ed37bac8645fdcbe0fe5"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
  "syn",
 ]
 
